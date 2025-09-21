@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>ArcGIS Ring Analysis with Improved UI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.32/esri/themes/dark/main.css"
+    />
+    <script src="https://js.arcgis.com/4.32/"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+      html, body, #viewDiv {
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      #ringControls {
+        position: absolute;
+        top: 15px;
+        left: 70px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 20px 25px;
+        border-radius: 16px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        z-index: 999;
+        width: 340px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      #ringCount {
+        padding: 8px 15px;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        outline: none;
+        width: 100px;
+        font-size: 14px;
+        background: white;
+        cursor: pointer;
+        transition: border-color 0.2s ease;
+      }
+
+      #ringCount:focus {
+        border-color: #3B82F6;
+      }
+
+      .ring-input {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid #f1f5f9;
+      }
+
+      .ring-input:last-child {
+        border-bottom: none;
+      }
+
+      .ring-input input[type="number"] {
+        padding: 8px 15px;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        width: 120px;
+        outline: none;
+        font-size: 14px;
+        transition: border-color 0.2s ease;
+      }
+
+      .ring-input input[type="number"]:focus {
+        border-color: #3B82F6;
+      }
+
+      .ring-input input[type="color"] {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #e2e8f0;
+        border-radius: 50%;
+        padding: 0;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+      }
+
+      .ring-input input[type="color"]:hover {
+        transform: scale(1.1);
+      }
+
+      .button-group {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 10px;
+      }
+
+      #analyzeBtn, #cancelBtn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      #analyzeBtn {
+        background: linear-gradient(135deg, #3B82F6, #1D4ED8);
+        color: white;
+      }
+
+      #cancelBtn {
+        background: linear-gradient(135deg, #EF4444, #DC2626);
+        color: white;
+      }
+
+      #analyzeBtn:hover, #cancelBtn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+      }
+
+      /* Results Panel Styling */
+      #resultsPanel {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 50vh;
+        background: linear-gradient(135deg, #1e293b, #334155);
+        color: white;
+        transform: translateY(100%);
+        transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 998;
+        border-top: 3px solid #3B82F6;
+        box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.3);
+      }
+
+      #resultsPanel.visible {
+        transform: translateY(0);
+      }
+
+      #resultsToggle {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, #3B82F6, #1D4ED8);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 25px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+        z-index: 999;
+        font-weight: 600;
+        box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+      }
+
+      #resultsToggle:hover {
+        transform: translateX(-50%) translateY(-2px);
+        box-shadow: 0 8px 24px rgba(59, 130, 246, 0.6);
+      }
+
+      #resultsToggle.panel-visible {
+        bottom: calc(50vh + 20px);
+      }
+
+      #resultsContent {
+        height: 100%;
+        overflow: auto;
+        padding: 25px;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 2px;
+        margin-bottom: 20px;
+        background: rgba(0, 0, 0, 0.3);
+        padding: 4px;
+        border-radius: 12px;
+      }
+
+      .tab {
+        padding: 12px 20px;
+        cursor: pointer;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+        font-weight: 500;
+        flex: 1;
+        text-align: center;
+        border: 2px solid transparent;
+      }
+
+      .tab:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .tab.active {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: #3B82F6;
+        color: #60A5FA;
+      }
+
+      .tab-content {
+        display: none;
+        animation: fadeIn 0.3s ease;
+      }
+
+      .tab-content.active {
+        display: block;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .download-button {
+        background: linear-gradient(135deg, #10B981, #059669);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 auto 20px;
+        width: fit-content;
+      }
+
+      .download-button:hover {
+        background: linear-gradient(135deg, #059669, #047857);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+      }
+
+      .download-button i {
+        font-size: 16px;
+      }
+
+      /* Table Styling */
+      .table-container {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th {
+        background: rgba(59, 130, 246, 0.2);
+        color: #93C5FD;
+        padding: 15px 12px;
+        text-align: left;
+        font-weight: 600;
+        border-bottom: 2px solid rgba(59, 130, 246, 0.3);
+      }
+
+      td {
+        padding: 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        transition: background-color 0.2s ease;
+      }
+
+      tr:hover td {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      tr:nth-child(even) td {
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .no-results {
+        text-align: center;
+        padding: 40px;
+        color: #94A3B8;
+        font-style: italic;
+      }
+
+      /* Scrollbar Styling */
+      #resultsContent::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      #resultsContent::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+      }
+
+      #resultsContent::-webkit-scrollbar-thumb {
+        background: rgba(59, 130, 246, 0.6);
+        border-radius: 4px;
+      }
+
+      #resultsContent::-webkit-scrollbar-thumb:hover {
+        background: rgba(59, 130, 246, 0.8);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="viewDiv"></div>
+
+    <div id="ringControls">
+      <label style="font-weight: 600; color: #374151;">
+        Number of Rings:
+        <select id="ringCount">
+          <option>1</option>
+          <option>2</option>
+          <option>3</option>
+          <option>4</option>
+          <option>5</option>
+        </select>
+      </label>
+      <div id="ringsContainer"></div>
+      <div class="button-group">
+        <button id="analyzeBtn">
+          <i class="fas fa-search"></i>
+          Analyze
+        </button>
+        <button id="cancelBtn">
+          <i class="fas fa-times"></i>
+          Cancel
+        </button>
+      </div>
+    </div>
+
+    <button id="resultsToggle">
+      <i class="fas fa-chevron-up"></i>
+      <span>Show Results</span>
+    </button>
+
+    <div id="resultsPanel">
+      <div id="resultsContent">
+        <div class="tabs" id="tabs"></div>
+        <div id="tabContents"></div>
+      </div>
+    </div>
+
+    <script>
+      require([
+        "esri/Map",
+        "esri/views/MapView",
+        "esri/layers/FeatureLayer",
+        "esri/Graphic",
+        "esri/layers/GraphicsLayer",
+        "esri/geometry/geometryEngine",
+        "esri/geometry/Point",
+        "esri/rest/query",
+        "esri/rest/support/Query"
+      ], (Map, MapView, FeatureLayer, Graphic, GraphicsLayer, geometryEngine, Point, query, Query) => {
+
+        const map = new Map({
+          basemap: "gray-vector"
+        });
+
+        const view = new MapView({
+          container: "viewDiv",
+          map: map,
+          center: [-98, 39],
+          zoom: 4
+        });
+
+        let layer = new FeatureLayer({
+          url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/0"
+        });
+        map.add(layer);
+
+        const graphicsLayer = new GraphicsLayer();
+        map.add(graphicsLayer);
+
+        const ringsContainer = document.getElementById("ringsContainer");
+        const ringCount = document.getElementById("ringCount");
+        const resultsPanel = document.getElementById("resultsPanel");
+        const resultsToggle = document.getElementById("resultsToggle");
+
+        // Toggle results panel
+        resultsToggle.addEventListener('click', () => {
+          const isVisible = resultsPanel.classList.contains('visible');
+          const icon = resultsToggle.querySelector('i');
+          const text = resultsToggle.querySelector('span');
+          
+          if (isVisible) {
+            resultsPanel.classList.remove('visible');
+            resultsToggle.classList.remove('panel-visible');
+            icon.className = 'fas fa-chevron-up';
+            text.textContent = 'Show Results';
+          } else {
+            resultsPanel.classList.add('visible');
+            resultsToggle.classList.add('panel-visible');
+            icon.className = 'fas fa-chevron-down';
+            text.textContent = 'Hide Results';
+          }
+        });
+
+        function renderRingInputs(count) {
+          ringsContainer.innerHTML = "";
+          for (let i = 0; i < count; i++) {
+            const div = document.createElement("div");
+            div.className = "ring-input";
+            div.innerHTML = `
+              <input type="number" min="1" placeholder="Ring ${i + 1} distance (km)" class="dist" />
+              <input type="color" value="${getColor(i)}" class="color" title="Ring ${i + 1} color" />
+              <label style="font-size: 12px; color: #64748B;">Ring ${i + 1}</label>
+            `;
+            ringsContainer.appendChild(div);
+          }
+        }
+
+        function getColor(index) {
+          const colors = ["#FF0000", "#FFA500", "#FFFF00", "#008000", "#0000FF"];
+          return colors[index % colors.length];
+        }
+
+        ringCount.addEventListener("change", () => {
+          renderRingInputs(parseInt(ringCount.value));
+        });
+
+        renderRingInputs(1);
+
+        view.on("click", async (event) => {
+          const point = view.toMap({ x: event.x, y: event.y });
+          view.graphics.removeAll();
+          graphicsLayer.removeAll();
+          
+          const pointGraphic = new Graphic({
+            geometry: point,
+            symbol: {
+              type: "simple-marker",
+              color: "white",
+              size: "12px",
+              outline: {
+                color: "#3B82F6",
+                width: 3
+              }
+            }
+          });
+
+          view.graphics.add(pointGraphic);
+          view.goTo({ target: point, zoom: 8 });
+          
+          document.getElementById("analyzeBtn").onclick = () => {
+            runAnalysis(point);
+          };
+        });
+
+        async function runAnalysis(center) {
+          graphicsLayer.removeAll();
+          const dists = document.querySelectorAll(".dist");
+          const colors = document.querySelectorAll(".color");
+
+          const tabs = document.getElementById("tabs");
+          const contents = document.getElementById("tabContents");
+          tabs.innerHTML = "";
+          contents.innerHTML = "";
+
+          let previousBuffer = null;
+
+          for (let i = 0; i < dists.length; i++) {
+            const distanceKm = parseFloat(dists[i].value);
+            const color = colors[i].value;
+
+            if (!distanceKm || distanceKm <= 0) continue;
+
+            const buffer = geometryEngine.geodesicBuffer(center, distanceKm, "kilometers");
+
+            let ring;
+            if (previousBuffer) { 
+              ring = geometryEngine.difference(buffer, previousBuffer);
+            } else {
+              ring = buffer;
+            }
+            previousBuffer = buffer;
+
+            graphicsLayer.add(new Graphic({
+              geometry: ring,
+              symbol: {
+                type: "simple-fill",
+                color: color + "40",
+                outline: {
+                  color: color,
+                  width: 2
+                }
+              }
+            }));
+
+            const q = new Query({
+              geometry: ring,
+              spatialRelationship: "intersects",
+              returnGeometry: false,
+              outFields: ["*"]
+            });
+
+            const results = await query.executeQueryJSON("https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/0", q);
+
+            const tab = document.createElement("div");
+            tab.className = "tab";
+            tab.style.borderColor = color;
+            tab.innerHTML = `Ring ${i + 1} <small>(${distanceKm}km)</small>`;
+            tab.dataset.index = i;
+            tabs.appendChild(tab);
+
+            const tabContent = document.createElement("div");
+            tabContent.className = "tab-content";
+            tabContent.id = `tab-${i}`;
+
+            if (results.features.length) {
+              const downloadBtn = document.createElement('button');
+              downloadBtn.className = 'download-button';
+              downloadBtn.innerHTML = '<i class="fas fa-download"></i>Download CSV';
+              downloadBtn.onclick = () => downloadTableAsCSV(`table-${i}`, `Ring_${i + 1}_Data`);
+              
+              const tableContainer = document.createElement("div");
+              tableContainer.className = "table-container";
+              
+              const table = document.createElement("table");
+              table.id = `table-${i}`;
+              const header = Object.keys(results.features[0].attributes);
+              
+              table.innerHTML = `
+                <thead>
+                  <tr>${header.map(h => `<th>${h}</th>`).join("")}</tr>
+                </thead>
+                <tbody>
+                  ${results.features.map(f => `
+                    <tr>${header.map(h => `<td>${f.attributes[h] || 'N/A'}</td>`).join("")}</tr>
+                  `).join("")}
+                </tbody>
+              `;
+              
+              tableContainer.appendChild(table);
+              tabContent.appendChild(downloadBtn);
+              tabContent.appendChild(tableContainer);
+            } else {
+              tabContent.innerHTML = `<div class="no-results"><i class="fas fa-search" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;"></i><br>No results found in this ring.</div>`;
+            }
+
+            contents.appendChild(tabContent);
+          }
+
+          document.querySelectorAll(".tab").forEach(tab => {
+            tab.addEventListener("click", () => {
+              document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+              document.querySelectorAll(".tab-content").forEach(tc => tc.classList.remove("active"));
+              tab.classList.add("active");
+              document.getElementById(`tab-${tab.dataset.index}`).classList.add("active");
+            });
+          });
+
+          const firstTab = document.querySelector(".tab");
+          if (firstTab) {
+            firstTab.click();
+            // Auto-show results panel after analysis
+            if (!resultsPanel.classList.contains('visible')) {
+              resultsToggle.click();
+            }
+          }
+
+          const lastDistance = parseFloat(dists[dists.length - 1].value);
+          if (lastDistance) {
+            const outerBuffer = geometryEngine.geodesicBuffer(center, lastDistance, "kilometers");
+            view.goTo({
+              target: outerBuffer.extent.expand(1.3)
+            }, {
+              duration: 1500,
+              easing: "ease-out"
+            });
+          }
+        }
+
+        function downloadTableAsCSV(tableId, filename) {
+          const table = document.getElementById(tableId);
+          if (!table) return;
+
+          const headers = [];
+          const headerRow = table.querySelector('thead tr');
+          if (headerRow) {
+            for (const cell of headerRow.cells) {
+              headers.push(cell.textContent.trim());
+            }
+          }
+
+          const rows = [];
+          const tbody = table.querySelector('tbody');
+          if (tbody) {
+            for (const row of tbody.rows) {
+              const rowData = [];
+              for (const cell of row.cells) {
+                let value = cell.textContent.replace(/,/g, '').trim();
+                rowData.push(`"${value}"`);
+              }
+              rows.push(rowData.join(','));
+            }
+          }
+
+          const csv = [headers.join(','), ...rows].join('\n');
+          
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `${filename}.csv`;
+          
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+
+        document.getElementById("cancelBtn").addEventListener("click", () => {
+          // Clear graphics
+          view.graphics.removeAll();
+          graphicsLayer.removeAll();
+          
+          // Clear results panel content
+          document.getElementById("tabs").innerHTML = "";
+          document.getElementById("tabContents").innerHTML = "";
+          
+          // Hide results panel and update toggle button
+          resultsPanel.classList.remove('visible');
+          resultsToggle.classList.remove('panel-visible');
+          resultsToggle.querySelector('i').className = 'fas fa-chevron-up';
+          resultsToggle.querySelector('span').textContent = 'Show Results';
+        });
+      });
+    </script>
+  </body>
+</html>
